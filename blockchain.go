@@ -2,7 +2,16 @@ package main
 
 // Blockchain defines the structure of a blockchain
 type Blockchain struct {
-	blocks []*Block
+	blocks       []*Block
+	blockChannel chan string
+}
+
+// ReadBlockChannel read data from a channel and add a block to the blockchain
+func (bc *Blockchain) ReadBlockChannel() {
+	select {
+	case data := <-bc.blockChannel:
+		bc.AddBlock(data)
+	}
 }
 
 // AddBlock add a block to the blockchain
@@ -18,6 +27,6 @@ func NewGenesisBlock() *Block {
 }
 
 // NewBlockchain create a new blockchain
-func NewBlockchain() *Blockchain {
-	return &Blockchain{[]*Block{NewGenesisBlock()}}
+func NewBlockchain(channel chan string) *Blockchain {
+	return &Blockchain{[]*Block{NewGenesisBlock()}, channel}
 }

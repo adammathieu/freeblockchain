@@ -1,12 +1,20 @@
 package main
 
-import "fmt"
+import (
+	"fmt"
+)
 
 func main() {
-	bc := NewBlockchain()
+	blockChannel := make(chan string)
+	bc := NewBlockchain(blockChannel)
 
-	bc.AddBlock("Premier Bloc")
-	bc.AddBlock("Second Bloc")
+	go func() {
+		bc.blockChannel <- "Premier Bloc"
+		bc.blockChannel <- "Second Bloc"
+	}()
+
+	bc.ReadBlockChannel()
+	bc.ReadBlockChannel()
 
 	for _, block := range bc.blocks {
 		fmt.Printf("Previous Hash: %x\n", block.PrevBlockHash)

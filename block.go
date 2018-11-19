@@ -26,6 +26,15 @@ func (b *Block) SetHash() {
 	b.Hash = hash[:]
 }
 
+// CalculateHash calculate and return the Hash of a block
+func (b *Block) CalculateHash() []byte {
+	timestamp := []byte(strconv.FormatInt(b.Timestamp, 10))
+	headers := bytes.Join([][]byte{b.PrevBlockHash, b.Data, timestamp}, []byte{})
+	hash := sha256.Sum256(headers)
+
+	return hash[:]
+}
+
 // SetCounterHash increment the check counter and generate a new Hash Counter
 func (b *Block) SetCounterHash() {
 	b.Counter++
