@@ -30,8 +30,12 @@ func main() {
 	}
 	go lapin.RabbitReconnector()
 	go lapin.Publisher()
+	go lapin.RabbitUndelivarablesHandler(lapin.rabbitUndelivarablesError)
 	for {
 		lapin.internal <- Message{"100", "json", "xXx", "CeMatin", "Me", 1, 1, []byte{}}
+		lapin.internal <- Message{"101", "json", "xXx", "CeMatin", "Me", 1, 1, []byte{}}
+		lapin.internal <- Message{"102", "json", "xXx", "CeMatin", "Me", 1, 1, []byte{}}
+		lapin.internal <- Message{"103", "json", "xXx", "CeMatin", "Me", 1, 1, []byte{}}
 		//time.Sleep(time.Duration(10) * time.Second)
 	}
 }

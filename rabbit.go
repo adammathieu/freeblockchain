@@ -23,13 +23,15 @@ type Message struct {
 
 // Rabbit defines the structure of rabbitmq
 type Rabbit struct {
-	url                    string
-	connection             *amqp.Connection
-	channel                *amqp.Channel
-	internal               chan interface{}
-	rabbitCloseError       chan *amqp.Error
-	undeliverablesExchange string
-	undeliverablesQueue    string
+	url                       string
+	connection                *amqp.Connection
+	channel                   *amqp.Channel
+	internal                  chan interface{}
+	semInternal               chan int64
+	rabbitCloseError          chan *amqp.Error
+	rabbitUndelivarablesError chan amqp.Return
+	undeliverablesExchange    string
+	undeliverablesQueue       string
 }
 
 // Connect try to connect to url and return amqp connection
@@ -45,7 +47,7 @@ func Connect(url string) (*amqp.Connection, error) {
 // OpenChannel try to create a channel on an establised connection and return amqp channel
 func OpenChannel(conn *amqp.Connection, url string) (*amqp.Channel, error) {
 	if conn == nil {
-		return nil, errors.New("Could not create channel on a nil connection.")
+		return nil, errors.New("Could not create channel on a nil connection")
 	}
 	log.Printf("Creating channel for Connection to rabbitmq on %s\n", url)
 	channel, err := conn.Channel()
@@ -93,7 +95,7 @@ func (r *Rabbit) DeclareUndeliverablesQueue() error {
 	return nil
 }
 
-// RabbitReconnector check if connection is alive (listener on *amqp.Error NotifyClose channel) and try to reconnect if necessary
+// RabbitReconnector check if connection is alive (listener NotifyClose on *amqp.Error channel) and try to reconnect if necessary
 // To be runned on a separate coroutine. To be tested with bats integration test
 func (r *Rabbit) RabbitReconnector() {
 	var rabbitErr *amqp.Error
@@ -134,19 +136,39 @@ func (r *Rabbit) RabbitReconnector() {
 	}
 }
 
+// RabbitUndelivarablesHandler check if published messages are not undelivarables (listener NotifyReturn on amqp.Return channel) and try to publish it on undelivarables queue.
+// To be runned on a separate goroutine. To be tested with bats integration test
+func (r *Rabbit) RabbitUndelivarablesHandler(chReturn <-chan amqp.Return) {
+	for undeliveredMsg := range chReturn {
+		log.Printf("Could not deliver %s with routing key %s", undeliveredMsg.CorrelationId, undeliveredMsg.RoutingKey)
+		msg := Message{"100", "json", "xXx", "CeMatin", "Me", 1, 1, []byte{}}
+		ProcessMsg(msg)
+	}
+}
+
+// ProcessMsg handle the message to be published  on rabbitmq
+func ProcessMsg(msg Message) {
+	fmt.Println(msg)
+}
+
 // Publisher read internal channel for message to be published on rabbitmq
 func (r *Rabbit) Publisher() {
 	for {
-		pub := <-r.internal
-		switch pub.(type) {
-		case Message:
-			fmt.Println(pub)
-			//TODO publish to rabbitmq
+		for msg := range r.internal {
+			r.semInternal <- 1
+			switch msg.(type) {
+			case Message:
+				msg := msg // Create new instance of msg for the goroutine.
+				go func() {
+					ProcessMsg(msg.(Message))
+					<-r.semInternal
+				}()
+			}
 		}
 	}
 }
 
-// NewRabbit create a new Rabbitmq structure
+// NewRabbit create a new Rabbitmq instance
 func NewRabbit(host string, port string, login string, password string, undeliverablesQueueName string, undeliverablesExchangeName string) (*Rabbit, error) {
 	// Create a new Rabbit instance
 	r := new(Rabbit)
@@ -158,14 +180,15 @@ func NewRabbit(host string, port string, login string, password string, undelive
 		return nil, err
 	}
 	r.connection = conn
-	// Create the rabbit error channel to monitor closing connection error
-	r.rabbitCloseError = make(chan *amqp.Error)
 	// Try to open a channel
 	channel, err := OpenChannel(r.connection, r.url)
 	if err != nil {
 		return nil, err
 	}
 	r.channel = channel
+	// Create the rabbit error channel to monitor closing connection/channel error
+	r.rabbitCloseError = make(chan *amqp.Error)
+	r.connection.NotifyClose(r.rabbitCloseError)
 	// Declare undelivarbles queue and exchange
 	r.undeliverablesQueue = undeliverablesQueueName
 	r.undeliverablesExchange = undeliverablesExchangeName
@@ -173,8 +196,12 @@ func NewRabbit(host string, port string, login string, password string, undelive
 	if err != nil {
 		return nil, err
 	}
-	// Create internal channel for publishing
+	// Create IPC internal channel for publishing
 	r.internal = make(chan interface{})
+	r.semInternal = make(chan int64, 4)
+	// Create the rabbit return channel to monitor undelivarables publish error
+	r.rabbitUndelivarablesError = make(chan amqp.Return)
+	r.channel.NotifyReturn(r.rabbitUndelivarablesError)
 	// Return Rabbit instance
 	return r, nil
 }
