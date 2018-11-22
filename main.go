@@ -1,9 +1,8 @@
 package main
 
 import (
-	"time"
-
-	"github.com/streadway/amqp"
+	"log"
+	"os"
 )
 
 func main() {
@@ -24,8 +23,15 @@ func main() {
 	// 	fmt.Printf("Hash: %x\n", block.Hash)
 	// }
 
-	lapin, _ := NewRabbit("localhost", "5672", "guest", "guest")
-	go lapin.RabbitReconnector(lapin.url)
-	lapin.rabbitCloseError <- amqp.ErrClosed
-	time.Sleep(time.Duration(10) * time.Second)
+	lapin, err := NewRabbit("localhost", "5672", "guest", "guest", "errQueue", "errX")
+	if err != nil {
+		log.Printf("%v", err)
+		os.Exit(-1)
+	}
+	go lapin.RabbitReconnector()
+	go lapin.Publisher()
+	for {
+		lapin.internal <- Message{"100", "json", "xXx", "CeMatin", "Me", 1, 1, []byte{}}
+		//time.Sleep(time.Duration(10) * time.Second)
+	}
 }
