@@ -141,17 +141,22 @@ func (r *Rabbit) RabbitReconnector() {
 func (r *Rabbit) RabbitUndelivarablesHandler(chReturn <-chan amqp.Return) {
 	for undeliveredMsg := range chReturn {
 		log.Printf("Could not deliver %s with routing key %s", undeliveredMsg.CorrelationId, undeliveredMsg.RoutingKey)
-		msg := Message{"100", "json", "xXx", "CeMatin", "Me", 1, 1, []byte{}}
+		msg := Message{"100", "json", "xXx", "CeMatin", "Me", 1, 1, []byte{}} //TODO replace msg with value from Return
 		ProcessMsg(msg)
 	}
 }
 
 // ProcessMsg handle the message to be published  on rabbitmq
 func ProcessMsg(msg Message) {
-	fmt.Println(msg)
+	fmt.Println(msg) //TODO use amqp.Publish()
 }
 
-// Publisher read internal channel for message to be published on rabbitmq
+// GetInternalIPC2RabbitChannel return rabbit isntance internal queue
+func (r *Rabbit) GetInternalIPC2RabbitChannel() chan interface{} {
+	return r.internal
+}
+
+// Publisher read IPC2Rabbit internal channel for messages to be published on rabbitmq
 func (r *Rabbit) Publisher() {
 	for {
 		for msg := range r.internal {
